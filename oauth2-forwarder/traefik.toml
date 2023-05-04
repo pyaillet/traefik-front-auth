@@ -1,0 +1,6 @@
+[providers.docker]
+
+[api]
+  insecure = true
+  dashboard = true
+  debug = true

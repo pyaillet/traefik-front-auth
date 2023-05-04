@@ -1,0 +1,93 @@
+version: "3.9"
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    ports:
+      - 8080:8080
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN_USERNAME}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+    command:
+      - start-dev
+      - --db=postgres
+      - --features=token-exchange
+      - --db-url=jdbc:postgresql://postgres/keycloak
+      - --db-username=keycloak
+      - --db-password=keycloak
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.keycloak.entrypoints: http
+      traefik.http.routers.keycloak.rule: PathPrefix(`/`)
+      traefik.http.routers.keycloak.service: keycloak@docker
+      traefik.http.services.keycloak.loadbalancer.server.port: '8080'
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=${KEYCLOAK_PG_USERNAME}
+      - POSTGRES_PASSWORD=${KEYCLOAK_PG_PASSWORD}
+      - POSTGRES_DB=${KEYCLOAK_PG_DATABASE}
+    volumes:
+      - ./data:/var/lib/postgresql/data
+  proxy:
+    image: traefik:v2.10
+    ports:
+      - 80:80
+      - 8081:8080
+    volumes:
+      - ./traefik.toml:/etc/traefik/traefik.toml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+  oauth:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.4.0
+    environment:
+      - OAUTH2_PROXY_PROVIDER=keycloak-oidc
+      - OAUTH2_PROXY_CLIENT_ID=${OAUTH2_PROXY_CLIENT_ID}
+      - OAUTH2_PROXY_CLIENT_SECRET=${OAUTH2_PROXY_CLIENT_SECRET}
+      - OAUTH2_PROXY_COOKIE_REFRESH=1h
+      - OAUTH2_PROXY_COOKIE_SECURE=false
+      - OAUTH2_PROXY_COOKIE_SECRET=${OAUTH2_PROXY_SECRET}
+      - OAUTH2_PROXY_REDIRECT_URL=${OAUTH2_PROXY_REDIRECT_URL}
+      - OAUTH2_PROXY_OIDC_ISSUER_URL=${OAUTH2_PROXY_OIDC_ISSUER_URL}
+      - OAUTH2_PROXY_EMAIL_DOMAINS=*
+      - OAUTH2_PROXY_FOOTER="-"
+      - OAUTH2_PROXY_HTTP_ADDRESS=0.0.0.0:4180
+      - OAUTH2_PROXY_PASS_BASIC_AUTH=false
+      - OAUTH2_PROXY_PASS_USER_HEADERS=true
+      - OAUTH2_PROXY_REVERSE_PROXY=true
+      - OAUTH2_PROXY_SET_AUTHORIZATION_HEADER=true
+      - OAUTH2_PROXY_SET_XAUTHREQUEST=true
+      - OAUTH2_PROXY_WHITELIST_DOMAIN=*
+    depends_on:
+      - keycloak
+    labels:
+      traefik.enable: 'true'
+      traefik.http.middlewares.oauth-verify.forwardAuth.address: http://oauth:4180/oauth2/auth
+      traefik.http.middlewares.oauth-verify.forwardAuth.trustForwardHeader: 'true'
+      traefik.http.middlewares.oauth-verify.forwardAuth.authResponseHeaders: X-Auth-Request-User,X-Auth-Request-Email,Authorization,Set-Cookie
+      traefik.http.middlewares.oauth-signin.errors.service: oauth@docker
+      traefik.http.middlewares.oauth-signin.errors.status: '401'
+      traefik.http.middlewares.oauth-signin.errors.query: /oauth2/sign_in
+      traefik.http.routers.oauth.entrypoints: http
+      traefik.http.routers.oauth.rule: PathPrefix(`/oauth2`)
+      traefik.http.routers.oauth.service: oauth@docker
+      traefik.http.services.oauth.loadbalancer.server.port: '4180'
+  whoami-opened:
+    image: traefik/whoami:v1.8
+    environment:
+      - WHOAMI_NAME=opened
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.whoami-opened.entrypoints: http
+      traefik.http.routers.whoami-opened.rule: PathPrefix(`/whoami-opened`)
+      traefik.http.routers.whoami-opened.service: whoami-opened@docker
+      traefik.http.services.whoami-opened.loadbalancer.server.port: '80'
+  whoami-secured:
+    image: traefik/whoami:v1.8
+    environment:
+      - WHOAMI_NAME=secured
+    labels:
+      traefik.enable: 'true'
+      traefik.http.routers.whoami-secured.entrypoints: http
+      traefik.http.routers.whoami-secured.middlewares: oauth-signin,oauth-verify
+      traefik.http.routers.whoami-secured.rule: PathPrefix(`/whoami-secured`)
+      traefik.http.routers.whoami-secured.service: whoami-secured@docker
+      traefik.http.services.whoami-secured.loadbalancer.server.port: '80'
