@@ -13,6 +13,7 @@ This repository provides two examples of traefik used as a an authentification p
 
 - https://github.com/BlackBeltTechnology/traefik-keycloak-sso-reverse-proxy
 - https://brianturchyn.net/traefik-forwardauth-support-with-keycloak/
+- https://github.com/mesosphere/traefik-forward-auth
 
 - https://github.com/oauth2-proxy/oauth2-proxy
 - https://alex.thom.ae/2019/10/20/protect-website-oauth2_proxy-traefik/
